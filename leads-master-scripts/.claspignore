@@ -1,0 +1,26 @@
+# Debug tools and development files
+debug-tools/
+debug-tools/**
+debug-tools/*.js
+debug-tools/*.md
+debug-tools/*.json
+node_modules/
+package.json
+package-lock.json
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node.js files
+node_modules/** 

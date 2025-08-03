@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <!-- Using Google's standard stylesheet for a native look -->
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+    <style>
+      body { padding: 10px; font-family: Arial, sans-serif; }
+      .block { margin-bottom: 15px; }
+      .button-bar { display: flex; justify-content: space-between; }
+      #deleteBtn { background-color: #d9534f; color: white; }
+      #deleteBtn:hover { background-color: #c9302c; }
+      #results { margin-top: 20px; padding: 10px; border-radius: 4px; background-color: #f0f0f0; min-height: 40px; }
+      .success { color: #3c763d; }
+      .warning { color: #8a6d3b; }
+      .error { color: #a94442; }
+    </style>
+  </head>
+  <body>
+    <h4>Find and Remove Leads</h4>
+    <div class="block">
+      <label for="searchText">Enter text to find in business names:</label>
+      <input type="text" id="searchText" class="width-100">
+    </div>
+
+    <div class="button-bar">
+      <button id="previewBtn" class="action">Preview Matches</button>
+      <button id="deleteBtn">Delete Matches</button>
+    </div>
+
+    <div id="results">
+      <p>Enter text and click a button to begin.</p>
+    </div>
+
+    <script>
+      document.getElementById('previewBtn').addEventListener('click', runPreview);
+      document.getElementById('deleteBtn').addEventListener('click', runDelete);
+
+      function showLoading(message) {
+        document.getElementById('results').innerHTML = `<p>${message}</p>`;
+      }
+
+      // --- Preview Functionality ---
+      function runPreview() {
+        const searchText = document.getElementById('searchText').value;
+        if (!searchText) {
+          showResult('Please enter text to search for.', 'error');
+          return;
+        }
+        showLoading('Searching for matches...');
+        google.script.run
+          .withSuccessHandler(onPreviewSuccess)
+          .withFailureHandler(onFailure)
+          .findMatchingLeads(searchText);
+      }
+
+      function onPreviewSuccess(count) {
+        if (count > 0) {
+          showResult(`Found <strong>${count}</strong> row(s) matching "${document.getElementById('searchText').value}".<br>You can now click 'Delete Matches'.`, 'warning');
+        } else {
+          showResult(`No rows found matching your search.`, 'success');
+        }
+      }
+
+      // --- Delete Functionality ---
+      function runDelete() {
+        const searchText = document.getElementById('searchText').value;
+        if (!searchText) {
+          showResult('Please enter text to search for.', 'error');
+          return;
+        }
+        
+        // Final user confirmation
+        if (!confirm(`Are you SURE you want to permanently delete all rows where the name contains "${searchText}"?\n\nThis cannot be undone.`)) {
+          return;
+        }
+        
+        showLoading('Deleting matching rows...');
+        google.script.run
+          .withSuccessHandler(onDeleteSuccess)
+          .withFailureHandler(onFailure)
+          .deleteMatchingLeads(searchText);
+      }
+
+      function onDeleteSuccess(count) {
+        showResult(`Successfully deleted <strong>${count}</strong> row(s).`, 'success');
+      }
+
+      // --- General Handlers ---
+      function onFailure(error) {
+        showResult(`Error: ${error.message}`, 'error');
+      }
+
+      function showResult(html, className) {
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = `<p class="${className}">${html}</p>`;
+      }
+    </script>
+  </body>
+</html>
