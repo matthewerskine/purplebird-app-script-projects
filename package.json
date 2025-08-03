@@ -1,0 +1,36 @@
+{
+    "name": "leads-master-scripts",
+    "version": "1.0.0",
+    "description": "Apps Script project for leads management with comprehensive testing",
+    "main": "index.js",
+    "scripts": {
+        "test": "node scripts/pre-push-test.js",
+        "test:quick": "node scripts/pre-push-test.js --quick",
+        "test:full": "node scripts/pre-push-test.js",
+        "push": "npm run test && cd leads-master && clasp push",
+        "push:force": "cd leads-master && clasp push",
+        "deploy": "npm run test && cd leads-master && clasp push && echo '✅ Deployment completed successfully'",
+        "health": "cd leads-master && clasp run monitorDeploymentHealth",
+        "emergency": "cd leads-master && clasp run emergencyDisable",
+        "setup": "npm install && chmod +x scripts/pre-push-test.js",
+        "coverage": "cd leads-master && clasp run runCoverageAnalysis",
+        "quick-coverage": "cd leads-master && clasp run quickCoverageCheck"
+    },
+    "keywords": [
+        "apps-script",
+        "clasp",
+        "testing",
+        "leads",
+        "airtable"
+    ],
+    "author": "Development Team",
+    "license": "MIT",
+    "devDependencies": {},
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "your-repository-url"
+    }
+}
