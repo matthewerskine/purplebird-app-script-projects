@@ -38,10 +38,8 @@ const CONFIG = {
   // Maximum execution time for tests (in seconds)
   MAX_EXECUTION_TIME: 300, // 5 minutes
   
-  // Required environment variables
-  REQUIRED_ENV: [
-    'CLASP_PROJECT_ID'
-  ]
+  // Required environment variables (optional for local testing)
+  REQUIRED_ENV: []
 };
 
 // ===================================================================================
@@ -54,9 +52,12 @@ const CONFIG = {
 function checkEnvironment() {
   console.log('🔍 Checking environment...');
   
-  for (const envVar of CONFIG.REQUIRED_ENV) {
-    if (!process.env[envVar]) {
-      throw new Error(`Missing required environment variable: ${envVar}`);
+  // Optional environment check for local testing
+  if (CONFIG.REQUIRED_ENV.length > 0) {
+    for (const envVar of CONFIG.REQUIRED_ENV) {
+      if (!process.env[envVar]) {
+        throw new Error(`Missing required environment variable: ${envVar}`);
+      }
     }
   }
   
