@@ -27,12 +27,12 @@ const CONFIG = {
   
   // Files that should be tested
   CRITICAL_FILES: [
-    'Airtable.js',
-    'Helpers.js',
-    'Qualify.js',
-    'EnrichmentAgent.js',
-    'Scraper.js',
-    'Reporting.js'
+    'leads-master/Airtable.js',
+    'leads-master/Helpers.js',
+    'leads-master/Qualify.js',
+    'leads-master/EnrichmentAgent.js',
+    'leads-master/Scraper.js',
+    'leads-master/Reporting.js'
   ],
   
   // Maximum execution time for tests (in seconds)
@@ -74,14 +74,14 @@ function checkClaspSetup() {
     execSync('clasp --version', { stdio: 'pipe' });
     console.log('✅ Clasp is installed');
     
-    // Check if we're in a clasp project
-    if (!fs.existsSync('.clasp.json')) {
-      throw new Error('Not in a clasp project directory');
-    }
-    console.log('✅ In clasp project directory');
-    
-    // Check if project ID is configured
-    const claspConfig = JSON.parse(fs.readFileSync('.clasp.json', 'utf8'));
+      // Check if we're in a clasp project
+  if (!fs.existsSync('leads-master/.clasp.json')) {
+    throw new Error('Not in a clasp project directory (leads-master/.clasp.json not found)');
+  }
+  console.log('✅ In clasp project directory');
+  
+  // Check if project ID is configured
+  const claspConfig = JSON.parse(fs.readFileSync('leads-master/.clasp.json', 'utf8'));
     if (!claspConfig.scriptId) {
       throw new Error('No script ID configured in .clasp.json');
     }
@@ -99,7 +99,7 @@ function runTestFunction(functionName) {
   console.log(`🧪 Running test: ${functionName}`);
   
   try {
-    const result = execSync(`clasp run ${functionName}`, {
+    const result = execSync(`cd leads-master && clasp run ${functionName}`, {
       stdio: 'pipe',
       timeout: CONFIG.MAX_EXECUTION_TIME * 1000
     });
@@ -147,12 +147,12 @@ function validateSyntax() {
   console.log('🔍 Validating JavaScript syntax...');
   
   const jsFiles = [
-    'Airtable.js',
-    'Helpers.js',
-    'Qualify.js',
-    'EnrichmentAgent.js',
-    'Scraper.js',
-    'Reporting.js',
+    'leads-master/Airtable.js',
+    'leads-master/Helpers.js',
+    'leads-master/Qualify.js',
+    'leads-master/EnrichmentAgent.js',
+    'leads-master/Scraper.js',
+    'leads-master/Reporting.js',
     'test-suite/TestFramework.js',
     'test-suite/DeploymentSafety.js',
     'test-suite/TestRunner.js'
