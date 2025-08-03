@@ -1,4 +1,7 @@
 
+// Column constants for consistency
+const SHEET_COL_NAME = 'name';
+
 /**
  * REVERTED to original, stable version.
  * Helper function to create a simple map of header names to column indices.
@@ -29,7 +32,7 @@ function getArchivedCompanyNamesSet(archivedSheet) {
   
   // The Archiver script writes the header 'Company Name' from Airtable.
   const headerMap = getHeaderMap(archivedSheet.getRange(1, 1, 1, archivedSheet.getLastColumn()).getValues()[0]);
-  const nameColIdx = headerMap['Company Name']; // Use the exact header name from the archive sheet
+  const nameColIdx = headerMap['Company Name'];
 
   if (nameColIdx === undefined) {
     Logger.log("Warning: 'Company Name' column not found in Archived Leads sheet.");

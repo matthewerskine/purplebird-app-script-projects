@@ -17,7 +17,14 @@ const scraperConfig = {
   API_COL_CATEGORY: 'category',
   API_COL_REGION: 'region',
   API_COL_PROCESSED: 'processed',
-  // --- CORRECTED to match your sheet's camelCase header ---
+  API_COL_SEARCH_QUERY: 'searchQuery',
+  API_COL_TARGET_SHEET: 'targetSheet',
+  API_COL_LAST_PROCESSED_AT: 'lastProcessedAt',
+  API_COL_NOTES: 'notes',
+  API_COL_AI_DO_NOT_PASS: 'AI DO NOT PASS',
+  API_COL_VERTICALS: 'VERTICALS',
+  API_COL_CATEGORIES: 'CATEGORIES',
+  // --- CORRECTED to match your sheet's actual header ---
   API_COL_PAGE_OFFSET: 'pageOffset', 
 
   // Columns in GM - RAW Sheet (Output)
@@ -115,11 +122,11 @@ function findNextRowToProcess(sheet) {
   // We get the header map, which is now case-insensitive.
   const headerMap = getHeaderMap(headers);
   
-  // Now we look for the column index using the case-insensitive keys from the config.
-  const processedColIdx = headerMap[scraperConfig.API_COL_PROCESSED.toLowerCase()];
-  const categoryColIdx = headerMap[scraperConfig.API_COL_CATEGORY.toLowerCase()];
-  const regionColIdx = headerMap[scraperConfig.API_COL_REGION.toLowerCase()];
-  const pageOffsetColIdx = headerMap[scraperConfig.API_COL_PAGE_OFFSET.toLowerCase()];
+  // Now we look for the column index using the lowercase keys from the config.
+  const processedColIdx = headerMap[scraperConfig.API_COL_PROCESSED];
+  const categoryColIdx = headerMap[scraperConfig.API_COL_CATEGORY];
+  const regionColIdx = headerMap[scraperConfig.API_COL_REGION];
+  const pageOffsetColIdx = headerMap[scraperConfig.API_COL_PAGE_OFFSET];
 
   if (processedColIdx === undefined || categoryColIdx === undefined || regionColIdx === undefined || pageOffsetColIdx === undefined) {
     const errorMsg = `ERROR: Could not find required columns ('${scraperConfig.API_COL_PROCESSED}', '${scraperConfig.API_COL_CATEGORY}', '${scraperConfig.API_COL_REGION}', '${scraperConfig.API_COL_PAGE_OFFSET}') in the API sheet. Check your column headers.`;
@@ -218,7 +225,7 @@ function appendDataToRawSheet(sheet, leadDataArray, region, category) {
     };
 
     for (const [configKey, value] of Object.entries(fieldsToMap)) {
-      const columnIndex = rawHeaderMap[configKey.toLowerCase()];
+      const columnIndex = rawHeaderMap[configKey];
       if (columnIndex !== undefined) {
         newRow[columnIndex] = value !== undefined ? value : '';
       }
@@ -247,20 +254,7 @@ function sendSlackNotification(message) {
   catch (e) { Logger.log(`Could not send Slack notification. Error: ${e.message}`); }
 }
 
-/**
- * Creates a map of header names (converted to lowercase) to their zero-based column index.
- * This function is now case-insensitive.
- * @param {Array<string>} headers An array of header strings from the sheet.
- */
-function getHeaderMap(headers) {
-  const map = {};
-  headers.forEach((header, index) => {
-    if (header) { 
-      map[String(header).trim().toLowerCase()] = index; 
-    }
-  });
-  return map;
-}
+// Note: Using the standard getHeaderMap function from Helpers.js for consistency
 
 // --- DEBUGGING FUNCTIONS ---
 // (No changes made to the debugging functions)

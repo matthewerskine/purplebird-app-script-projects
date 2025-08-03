@@ -14,83 +14,47 @@ const DEFAULT_LEAD_STAGE = 'Qualified';
 
 // --- Enhanced function to find airtable action column ---
 function findAirtableActionColumn(headerMap) {
-  // Try exact match first (case-insensitive since headerMap keys are now lowercase)
-  if (headerMap['airtableaction'] !== undefined) {
-    return headerMap['airtableaction'];
-  }
-  
-  // Try common variations (all lowercase)
-  const variations = [
-    'airtable action',
-    'airtableaction',
-    'airtable_action',
-    'airtable_action',
-    'action',
-    'skip'
-  ];
-  
-  for (const variation of variations) {
-    if (headerMap[variation] !== undefined) {
-      Logger.log(`Found airtable action column: "${variation}"`);
-      return headerMap[variation];
-    }
-  }
-  
-  // Try fuzzy matching - look for any column containing both "airtable" and "action"
-  for (const key of Object.keys(headerMap)) {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey.includes('airtable') && lowerKey.includes('action')) {
-      Logger.log(`Found airtable action column (fuzzy match): "${key}"`);
-      return headerMap[key];
-    }
-  }
-  
-  // Try just "action" or "skip" as last resort
-  for (const key of Object.keys(headerMap)) {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey === 'action' || lowerKey === 'skip') {
-      Logger.log(`Found potential action column: "${key}"`);
-      return headerMap[key];
-    }
-  }
-  
-  Logger.log('WARNING: No airtable action column found');
-  Logger.log('Available columns:');
-  Object.keys(headerMap).forEach(key => {
-    Logger.log(`  - "${key}"`);
-  });
-  return undefined;
+  return headerMap[SHEET_COL_AIRTABLE_ACTION];
 }
 
 // Column names in your Google Sheet
 const SHEET_COL_NAME = 'name';
 const SHEET_COL_PHONE = 'phone';
-const SHEET_COL_WEBSITE = 'websiteurl';
+const SHEET_COL_WEBSITE = 'websiteUrl';
 const SHEET_COL_INDUSTRY = 'category';
 const SHEET_COL_PROCESSED = 'processed';
-const SHEET_COL_EMAIL_EXTRACTED = 'extractemail.email';
-const SHEET_COL_ADS_RUNNING = 'extractads.isrunningads';
+const SHEET_COL_EMAIL_EXTRACTED = 'extractEmail.email';
+const SHEET_COL_ADS_RUNNING = 'extractAds.isRunningAds';
 const SHEET_COL_NOTES = 'notes'; // For marking duplicates
 // --- NEW: Column for skipping rows ---
-const SHEET_COL_AIRTABLE_ACTION = 'airtableaction';
+const SHEET_COL_AIRTABLE_ACTION = 'airtableAction';
 
-// Helper function for case-insensitive column lookup
-function getColumnIndex(headerMap, columnName) {
-  // Try exact match first
-  if (headerMap[columnName] !== undefined) {
-    return headerMap[columnName];
-  }
-  
-  // Try case-insensitive match
-  const lowerColumnName = columnName.toLowerCase();
-  for (const key of Object.keys(headerMap)) {
-    if (key.toLowerCase() === lowerColumnName) {
-      return headerMap[key];
-    }
-  }
-  
-  return undefined;
-} 
+// Additional columns for enrichment and other functions
+const SHEET_COL_REGION = 'region';
+const SHEET_COL_CATEGORY = 'category';
+const SHEET_COL_SEARCH_QUERY = 'searchQuery';
+const SHEET_COL_GOOGLE_PLACE_ID = 'googlePlaceId';
+const SHEET_COL_GOOGLE_ID = 'googleId';
+const SHEET_COL_POSITION = 'position';
+const SHEET_COL_ADDRESS = 'address';
+const SHEET_COL_RATING = 'rating';
+const SHEET_COL_REVIEWS_COUNT = 'reviewsCount';
+const SHEET_COL_OWNER_PROFILE_URL = 'ownerProfileUrl';
+const SHEET_COL_MAIN_CATEGORY = 'mainCategory';
+const SHEET_COL_VERIFY_COMPANY_STATUS_COMPANY_NUMBER = 'verifyCompanyStatus.companyNumber';
+const SHEET_COL_VERIFY_COMPANY_STATUS_TRADING_STATUS = 'verifyCompanyStatus.tradingStatus';
+const SHEET_COL_VERIFY_COMPANY_STATUS_CONFIDENCE = 'verifyCompanyStatus.confidence';
+const SHEET_COL_ATTRIBUTION_LAST_UPDATED_DATE = 'attribution.lastUpdatedDate';
+const SHEET_COL_ATTRIBUTION_AGENCY_NAME = 'attribution.agencyName';
+const SHEET_COL_ATTRIBUTION_ATTRIBUTION_YEAR = 'attribution.attributionYear';
+const SHEET_COL_ATTRIBUTION_IS_OUTDATED = 'attribution.isOutdated';
+const SHEET_COL_ATTRIBUTION_CONFIDENCE = 'attribution.confidence';
+const SHEET_COL_EXTRACT_ADS_GOOGLE = 'extractAds.google';
+const SHEET_COL_EXTRACT_ADS_FACEBOOK = 'extractAds.facebook';
+const SHEET_COL_EXTRACT_ADS_LINKEDIN = 'extractAds.linkedin';
+const SHEET_COL_EXTRACT_ADS_TIKTOK = 'extractAds.tiktok';
+const SHEET_COL_EXTRACT_ADS_TWITTER = 'extractAds.twitter';
+const SHEET_COL_EXTRACT_ADS_GOOGLE_ADS_LINK = 'extractAds.googleAdsLink'; 
 
 // Airtable Field Names
 const AIRTABLE_FIELD_COMPANY_NAME = 'Company Name';
@@ -124,7 +88,7 @@ function sendSelectedLeadsToAirtable() {
   const requiredSheetCols = [SHEET_COL_NAME, SHEET_COL_PROCESSED]; // airtableAction is optional
 
   for (const col of requiredSheetCols) {
-    if (getColumnIndex(headerMap, col) === undefined) {
+    if (headerMap[col] === undefined) {
       ui.alert('Missing Header Column', `A required column "${col}" was not found in Row 1 of your sheet.`, ui.ButtonSet.OK);
       return;
     }
@@ -182,13 +146,13 @@ function processDataRows(sheet, dataRowsRange, headerMap) {
     }
 
     // --- EXISTING LOGIC: Check if already processed ---
-    const processedStatusCell = rowData[getColumnIndex(headerMap, SHEET_COL_PROCESSED)];
+    const processedStatusCell = rowData[headerMap[SHEET_COL_PROCESSED]];
     if (processedStatusCell && (String(processedStatusCell).toLowerCase().startsWith('sent') || String(processedStatusCell).toLowerCase().startsWith('verified'))) {
       alreadyProcessedCount++;
       continue;
     }
 
-    const companyName = rowData[getColumnIndex(headerMap, SHEET_COL_NAME)];
+    const companyName = rowData[headerMap[SHEET_COL_NAME]];
     if (!companyName) {
       Logger.log(`Sheet Row ${actualSheetRowIndex}: Skipping due to missing company name.`);
       failCount++;
@@ -198,9 +162,9 @@ function processDataRows(sheet, dataRowsRange, headerMap) {
     const airtableRecord = {
       fields: {
         [AIRTABLE_FIELD_COMPANY_NAME]: companyName,
-        [AIRTABLE_FIELD_PHONE]: getColumnIndex(headerMap, SHEET_COL_PHONE) !== undefined ? String(rowData[getColumnIndex(headerMap, SHEET_COL_PHONE)] || '') : null,
-        [AIRTABLE_FIELD_WEBSITE_URL]: getColumnIndex(headerMap, SHEET_COL_WEBSITE) !== undefined ? rowData[getColumnIndex(headerMap, SHEET_COL_WEBSITE)] : null,
-        [AIRTABLE_FIELD_INDUSTRY]: getColumnIndex(headerMap, SHEET_COL_INDUSTRY) !== undefined ? rowData[getColumnIndex(headerMap, SHEET_COL_INDUSTRY)] : null,
+        [AIRTABLE_FIELD_PHONE]: headerMap[SHEET_COL_PHONE] !== undefined ? String(rowData[headerMap[SHEET_COL_PHONE]] || '') : null,
+        [AIRTABLE_FIELD_WEBSITE_URL]: headerMap[SHEET_COL_WEBSITE] !== undefined ? rowData[headerMap[SHEET_COL_WEBSITE]] : null,
+        [AIRTABLE_FIELD_INDUSTRY]: headerMap[SHEET_COL_INDUSTRY] !== undefined ? rowData[headerMap[SHEET_COL_INDUSTRY]] : null,
         [AIRTABLE_FIELD_DATE_CREATED]: todayISO,
         [AIRTABLE_FIELD_STRATEGY]: 'Cold Call',
         [AIRTABLE_FIELD_SOURCE]: DEFAULT_LEAD_SOURCE,
@@ -208,12 +172,12 @@ function processDataRows(sheet, dataRowsRange, headerMap) {
       }
     };
 
-    if (getColumnIndex(headerMap, SHEET_COL_EMAIL_EXTRACTED) !== undefined) {
-      airtableRecord.fields[AIRTABLE_FIELD_EMAIL] = rowData[getColumnIndex(headerMap, SHEET_COL_EMAIL_EXTRACTED)] || null;
+    if (headerMap[SHEET_COL_EMAIL_EXTRACTED] !== undefined) {
+      airtableRecord.fields[AIRTABLE_FIELD_EMAIL] = rowData[headerMap[SHEET_COL_EMAIL_EXTRACTED]] || null;
     }
     
-    if (getColumnIndex(headerMap, SHEET_COL_ADS_RUNNING) !== undefined) {
-      const sheetValue = rowData[getColumnIndex(headerMap, SHEET_COL_ADS_RUNNING)];
+    if (headerMap[SHEET_COL_ADS_RUNNING] !== undefined) {
+      const sheetValue = rowData[headerMap[SHEET_COL_ADS_RUNNING]];
       airtableRecord.fields[AIRTABLE_FIELD_ADS_RUNNING] = String(sheetValue || '').trim().toLowerCase() === 'yes';
     }
 
@@ -248,16 +212,16 @@ function processDataRows(sheet, dataRowsRange, headerMap) {
         const originalItem = batch[index];
         if (createdRecord.id) {
           successCount++;
-          sheet.getRange(originalItem.sheetRowIndex, getColumnIndex(headerMap, SHEET_COL_PROCESSED) + 1).setValue(`Sent on ${todayISO} (ID: ${createdRecord.id})`);
+          sheet.getRange(originalItem.sheetRowIndex, headerMap[SHEET_COL_PROCESSED] + 1).setValue(`Sent on ${todayISO} (ID: ${createdRecord.id})`);
         } else {
           failCount++;
-          sheet.getRange(originalItem.sheetRowIndex, getColumnIndex(headerMap, SHEET_COL_PROCESSED) + 1).setValue(`Error on ${todayISO}`);
+          sheet.getRange(originalItem.sheetRowIndex, headerMap[SHEET_COL_PROCESSED] + 1).setValue(`Error on ${todayISO}`);
         }
       });
     } else {
       failCount += batch.length;
       batch.forEach(originalItem => {
-        sheet.getRange(originalItem.sheetRowIndex, getColumnIndex(headerMap, SHEET_COL_PROCESSED) + 1).setValue(`API Error on ${todayISO}`);
+        sheet.getRange(originalItem.sheetRowIndex, headerMap[SHEET_COL_PROCESSED] + 1).setValue(`API Error on ${todayISO}`);
       });
     }
   }
@@ -705,7 +669,7 @@ function identifyBadRecords() {
   console.log('=== CHECKING REQUIRED COLUMNS ===');
   const requiredCols = ['name', 'processed'];
   for (const col of requiredCols) {
-    const colIndex = getColumnIndex(headerMap, col);
+    const colIndex = headerMap[col];
     if (colIndex === undefined) {
       console.log(`❌ MISSING COLUMN: "${col}"`);
       return;
@@ -736,8 +700,8 @@ function identifyBadRecords() {
     const rowData = allData[i];
     const sheetRow = i + 1;
     
-    const companyName = rowData[getColumnIndex(headerMap, 'name')];
-    const processedStatus = String(rowData[getColumnIndex(headerMap, 'processed')] || '').trim();
+    const companyName = rowData[headerMap['name']];
+    const processedStatus = String(rowData[headerMap['processed']] || '').trim();
     const actionValue = String(rowData[airtableActionColIndex] || '').trim().toLowerCase();
     
     // Check if this row has "skip" and "Sent on"
@@ -1094,7 +1058,7 @@ function deleteBadRecords() {
   
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('GM - Qualify');
   const headerMap = getHeaderMap(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
-  const processedColIndex = getColumnIndex(headerMap, 'processed');
+  const processedColIndex = headerMap['processed'];
   
   let successCount = 0;
   let failCount = 0;
@@ -1295,7 +1259,7 @@ function deleteBadRecordsTest() {
   
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('GM - Qualify');
   const headerMap = getHeaderMap(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
-  const processedColIndex = getColumnIndex(headerMap, 'processed');
+  const processedColIndex = headerMap['processed'];
   
   try {
     // Rate limiting: Wait 1 second between API calls to avoid hitting limits

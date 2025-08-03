@@ -23,7 +23,15 @@ const FIELD_KEYS_EMAIL = { website: 'websiteUrl' };
 const OUTPUT_COLUMN_NAMES_EMAIL = { email: 'extractEmail.email' };
 
 const FIELD_KEYS_ADS = { website: 'websiteUrl' };
-const OUTPUT_COLUMN_NAMES_ADS = { isRunningAds: 'extractAds.isRunningAds', google: 'extractAds.google', facebook: 'extractAds.facebook', linkedin: 'extractAds.linkedin', tiktok: 'extractAds.tiktok', twitter: 'extractAds.twitter', googleAdsLink: 'extractAds.googleAdsLink' };
+const OUTPUT_COLUMN_NAMES_ADS = { 
+  isRunningAds: 'extractAds.isRunningAds', 
+  google: 'extractAds.google', 
+  facebook: 'extractAds.facebook', 
+  linkedin: 'extractAds.linkedin', 
+  tiktok: 'extractAds.tiktok', 
+  twitter: 'extractAds.twitter', 
+  googleAdsLink: 'extractAds.googleAdsLink' 
+};
 
 
 // --- CONFIGURATION ---
@@ -143,8 +151,8 @@ function resetEnrichmentStatus() {
   }
   
   const headerMap = getHeaderMap(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
-  const statusColIdx = headerMap[ENRICHMENT_STATUS_COLUMN.toLowerCase()];
-  const notesColIdx = headerMap[ENRICHMENT_NOTES_COLUMN.toLowerCase()];
+  const statusColIdx = headerMap[ENRICHMENT_STATUS_COLUMN];
+  const notesColIdx = headerMap[ENRICHMENT_NOTES_COLUMN];
 
   if (statusColIdx === undefined) {
     ui.alert(`Status column "${ENRICHMENT_STATUS_COLUMN}" not found. Cannot reset status.`);
@@ -453,31 +461,31 @@ function callOpenRouter(prompt, model, systemContent = 'You are an AI assistant 
 
 function setupSheetProcessing(sheet, data, fieldKeys, outputColumnNames) {
   if (!data || data.length === 0) return null;
+  
+  // Use standard getHeaderMap function for consistency
   const initialHeaders = data[0].map(h => String(h).trim());
-  const initialHeaderMap = {};
-  initialHeaders.forEach((h, i) => { initialHeaderMap[h.toLowerCase()] = i; });
+  const initialHeaderMap = getHeaderMap(initialHeaders);
+  
   const fieldIndices = {};
   for (const [key, headerName] of Object.entries(fieldKeys)) {
-    const index = initialHeaderMap[String(headerName).toLowerCase()];
+    const index = initialHeaderMap[headerName];
     fieldIndices[key] = (index === undefined) ? null : index;
   }
-  let currentSheetHeaderMap = {};
-  sheet.getRange(1, 1, 1, sheet.getLastColumn() > 0 ? sheet.getLastColumn() : 1).getValues()[0].forEach((h, i) => { currentSheetHeaderMap[String(h).trim().toLowerCase()] = i; });
-  Object.values(outputColumnNames).forEach((name) => {
-    if (!(String(name).toLowerCase() in currentSheetHeaderMap)) {
-      const nextCol = sheet.getLastColumn() + 1;
-      sheet.getRange(1, nextCol).setValue(name);
-      currentSheetHeaderMap[String(name).toLowerCase()] = nextCol - 1;
-    }
-  });
-  SpreadsheetApp.flush();
-  const finalHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const finalHeaderMap = {};
-  finalHeaders.forEach((h, i) => { finalHeaderMap[String(h).trim().toLowerCase()] = i; });
+  
+  // Get current sheet headers using standard function
+  const currentSheetHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn() > 0 ? sheet.getLastColumn() : 1).getValues()[0];
+  const currentSheetHeaderMap = getHeaderMap(currentSheetHeaders);
+  
+  // CRITICAL FIX: Don't add columns, just find existing ones
   const outputIndices = {};
   for (const [key, label] of Object.entries(outputColumnNames)) {
-    outputIndices[key] = finalHeaderMap[String(label).toLowerCase()];
+    const index = currentSheetHeaderMap[label];
+    if (index === undefined) {
+      Logger.log(`Warning: Column "${label}" not found in sheet. Enrichment may not work properly.`);
+    }
+    outputIndices[key] = index;
   }
+  
   return { fieldIndices, outputIndices };
 }
 

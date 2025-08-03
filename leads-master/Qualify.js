@@ -75,9 +75,9 @@ function sendToQualifySheet() {
 
   // --- 3. Process Selection and Build Log ---
   const selectedData = dataRange.getValues();
-  const sourceNameColIdx = sourceHeaderMap[SHEET_COL_NAME.toLowerCase()]; // Lowercase for safety
-  const sentToQualifyColIdx = sourceHeaderMap[SHEET_COL_SENT_TO_QUALIFY.toLowerCase()]; // Lowercase for safety
-  const notesColSourceIdx = sourceHeaderMap[SHEET_COL_NOTES.toLowerCase()]; // Lowercase for safety
+  const sourceNameColIdx = sourceHeaderMap[SHEET_COL_NAME]; // All keys are now lowercase
+  const sentToQualifyColIdx = sourceHeaderMap[SHEET_COL_SENT_TO_QUALIFY]; // All keys are now lowercase
+  const notesColSourceIdx = sourceHeaderMap[SHEET_COL_NOTES]; // All keys are now lowercase
   
   const logMessages = [];
   const counters = { transferred: 0, alreadySent: 0, inQualify: 0, inArchive: 0, inHeight: 0, inRaw: 0 };
@@ -122,8 +122,8 @@ function sendToQualifySheet() {
     // ===== THE FIX IS HERE =======================================
     // =============================================================
     const newRow = destHeaderArray.map(header => {
-      // Find the index by converting the destination header to lowercase before looking it up.
-      const sourceColIndex = sourceHeaderMap[header.toLowerCase()];
+      // Find the index by looking up the header (all keys are now lowercase)
+      const sourceColIndex = sourceHeaderMap[header];
       
       // Use the found index to get data from the source row. If not found, return a blank.
       return sourceColIndex !== undefined ? sourceRowData[sourceColIndex] : '';
