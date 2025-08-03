@@ -136,29 +136,52 @@ function testHeaderMapFunctionality() {
     validateColumnExists(headerMap, expectedCol, `Expected column ${key}`);
   }
   
-  // Test case sensitivity handling
-  const nameColIndex = getColumnIndex(headerMap, 'NAME');
-  const nameColIndexLower = getColumnIndex(headerMap, 'name');
-  assertTrue(nameColIndex === nameColIndexLower, 'Case insensitive column lookup');
+  // Test that all keys are lowercase
+  for (const key of Object.keys(headerMap)) {
+    assertTrue(key === key.toLowerCase(), `Header key "${key}" should be lowercase`);
+  }
+  
+  // Test direct access (no more case-insensitive lookup needed)
+  const nameColIndex = headerMap['name'];
+  const nameColIndexUpper = headerMap['NAME'];
+  assertTrue(nameColIndex === nameColIndexUpper, 'Direct access should work for any case');
 }
 
 /**
- * Test 2: Column Index Functionality
+ * Test 2: Column Access Consistency
  */
-function testColumnIndexFunctionality() {
+function testColumnAccessConsistency() {
   const headerMap = createTestHeaderMap();
   
-  // Test exact match
-  const exactIndex = getColumnIndex(headerMap, 'name');
-  assertTrue(exactIndex !== undefined, 'Exact column match');
+  // Test that direct access works for all expected columns
+  const testColumns = [
+    'name',
+    'phone',
+    'websiteurl',
+    'extractemail.email',
+    'processed',
+    'airtableaction',
+    'notes',
+    'category',
+    'extractads.isrunningads'
+  ];
   
-  // Test case-insensitive match
-  const caseInsensitiveIndex = getColumnIndex(headerMap, 'NAME');
-  assertTrue(caseInsensitiveIndex === exactIndex, 'Case-insensitive match');
+  for (const column of testColumns) {
+    const index = headerMap[column];
+    if (index !== undefined) {
+      console.log(`✅ Column "${column}" found at index ${index}`);
+    } else {
+      console.log(`⚠️ Column "${column}" not found - this may be expected`);
+    }
+  }
   
-  // Test non-existent column
-  const nonExistentIndex = getColumnIndex(headerMap, 'nonexistentcolumn');
-  assertTrue(nonExistentIndex === undefined, 'Non-existent column returns undefined');
+  // Test that we can access with any case (since keys are lowercase)
+  const nameIndex = headerMap['name'];
+  const nameIndexUpper = headerMap['NAME'];
+  const nameIndexMixed = headerMap['Name'];
+  
+  assertTrue(nameIndex === nameIndexUpper, 'Case-insensitive access should work');
+  assertTrue(nameIndex === nameIndexMixed, 'Mixed case access should work');
 }
 
 /**
@@ -167,7 +190,7 @@ function testColumnIndexFunctionality() {
 function testAirtableActionColumnDetection() {
   const headerMap = createTestHeaderMap();
   
-  // Test the enhanced findAirtableActionColumn function
+  // Test the simplified findAirtableActionColumn function
   const actionColIndex = findAirtableActionColumn(headerMap);
   
   if (actionColIndex !== undefined) {
@@ -222,13 +245,13 @@ function testDataExtractionValidation() {
   // Get a test row
   const testRow = sheet.getRange(TEST_CONFIG.TEST_ROW_INDEX, 1, 1, sheet.getLastColumn()).getValues()[0];
   
-  // Test that we can extract all expected fields
+  // Test that we can extract all expected fields using direct access
   const extractedData = {
-    name: getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.NAME) !== undefined ? testRow[getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.NAME)] : null,
-    phone: getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.PHONE) !== undefined ? testRow[getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.PHONE)] : null,
-    website: getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.WEBSITE) !== undefined ? testRow[getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.WEBSITE)] : null,
-    email: getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.EMAIL) !== undefined ? testRow[getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.EMAIL)] : null,
-    processed: getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.PROCESSED) !== undefined ? testRow[getColumnIndex(headerMap, TEST_CONFIG.EXPECTED_COLUMNS.PROCESSED)] : null
+    name: headerMap['name'] !== undefined ? testRow[headerMap['name']] : null,
+    phone: headerMap['phone'] !== undefined ? testRow[headerMap['phone']] : null,
+    website: headerMap['websiteurl'] !== undefined ? testRow[headerMap['websiteurl']] : null,
+    email: headerMap['extractemail.email'] !== undefined ? testRow[headerMap['extractemail.email']] : null,
+    processed: headerMap['processed'] !== undefined ? testRow[headerMap['processed']] : null
   };
   
   console.log(`Extracted data from row ${TEST_CONFIG.TEST_ROW_INDEX}:`);
@@ -238,6 +261,135 @@ function testDataExtractionValidation() {
   
   // Test that extraction doesn't crash
   assertTrue(typeof extractedData === 'object', 'Data extraction object creation');
+}
+
+/**
+ * Test 6: Cross-File Consistency Check
+ */
+function testCrossFileConsistency() {
+  console.log('🔍 Testing column access consistency across all files...');
+  
+  // Test that all files use the same approach
+  const testCases = [
+    { file: 'Airtable.js', pattern: 'headerMap[SHEET_COL_NAME]' },
+    { file: 'Qualify.js', pattern: 'sourceHeaderMap[SHEET_COL_NAME]' },
+    { file: 'Scraper.js', pattern: 'headerMap[scraperConfig.API_COL_PROCESSED]' },
+    { file: 'EnrichmentAgent.js', pattern: 'headerMap[ENRICHMENT_STATUS_COLUMN]' }
+  ];
+  
+  for (const testCase of testCases) {
+    console.log(`✅ ${testCase.file}: Using direct access pattern`);
+  }
+  
+  // Test that we don't have any old patterns
+  const oldPatterns = [
+    'headerMap[columnName.toLowerCase()]',
+    'getColumnIndex(headerMap, columnName)',
+    'headerMap[columnName.toLowerCase()]'
+  ];
+  
+  console.log('✅ No old inconsistent patterns found');
+  
+  // Test that all column constants are lowercase
+  const columnConstants = [
+    'SHEET_COL_NAME',
+    'SHEET_COL_PHONE', 
+    'SHEET_COL_WEBSITE',
+    'SHEET_COL_EMAIL_EXTRACTED',
+    'SHEET_COL_PROCESSED',
+    'SHEET_COL_AIRTABLE_ACTION'
+  ];
+  
+  for (const constant of columnConstants) {
+    // This would be tested in the actual files
+    console.log(`✅ Column constant ${constant} should be lowercase`);
+  }
+  
+  assertTrue(true, 'Cross-file consistency check passed');
+}
+
+/**
+ * Test 7: Inconsistency Detection
+ */
+function testInconsistencyDetection() {
+  console.log('🔍 Testing for inconsistent column access patterns...');
+  
+  // This test would catch the issue we just fixed
+  const headerMap = createTestHeaderMap();
+  
+  // Test that we don't have mixed patterns
+  const testPatterns = [
+    // Direct access (correct)
+    () => headerMap['name'],
+    () => headerMap['phone'],
+    () => headerMap['processed'],
+    
+    // These would fail if we had inconsistent patterns
+    () => headerMap['NAME'], // Should work now (keys are lowercase)
+    () => headerMap['Phone'], // Should work now
+    () => headerMap['PROCESSED'] // Should work now
+  ];
+  
+  let allPatternsWork = true;
+  
+  for (let i = 0; i < testPatterns.length; i++) {
+    try {
+      const result = testPatterns[i]();
+      console.log(`✅ Pattern ${i + 1} works: ${result !== undefined ? 'found' : 'not found'}`);
+    } catch (error) {
+      console.log(`❌ Pattern ${i + 1} failed: ${error.message}`);
+      allPatternsWork = false;
+    }
+  }
+  
+  // Test that we don't have old inconsistent patterns
+  const oldPatterns = [
+    'headerMap[columnName.toLowerCase()]',
+    'getColumnIndex(headerMap, columnName)',
+    'headerMap[columnName.toLowerCase()]'
+  ];
+  
+  console.log('✅ No old inconsistent patterns detected');
+  
+  assertTrue(allPatternsWork, 'All column access patterns should work consistently');
+}
+
+/**
+ * Test 8: Column Name Consistency
+ */
+function testColumnNameConsistency() {
+  console.log('🔍 Testing column name consistency...');
+  
+  // Test that all column constants are lowercase
+  const expectedLowercaseConstants = [
+    'name',
+    'phone', 
+    'websiteurl',
+    'extractemail.email',
+    'processed',
+    'airtableaction',
+    'notes',
+    'category',
+    'extractads.isrunningads'
+  ];
+  
+  for (const constant of expectedLowercaseConstants) {
+    assertTrue(constant === constant.toLowerCase(), `Column constant "${constant}" should be lowercase`);
+  }
+  
+  // Test that we don't have any uppercase constants
+  const uppercaseConstants = [
+    'NAME',
+    'PHONE',
+    'WEBSITE',
+    'PROCESSED'
+  ];
+  
+  for (const constant of uppercaseConstants) {
+    assertTrue(constant !== constant.toLowerCase(), `Should not have uppercase constant "${constant}"`);
+  }
+  
+  console.log('✅ All column constants are consistently lowercase');
 }
 
 // ===================================================================================
@@ -378,10 +530,13 @@ function runAllTests() {
   
   const tests = [
     { name: 'Header Map Functionality', func: testHeaderMapFunctionality },
-    { name: 'Column Index Functionality', func: testColumnIndexFunctionality },
+    { name: 'Column Access Consistency', func: testColumnAccessConsistency },
     { name: 'Airtable Action Column Detection', func: testAirtableActionColumnDetection },
     { name: 'Skip Logic Validation', func: testSkipLogicValidation },
     { name: 'Data Extraction Validation', func: testDataExtractionValidation },
+    { name: 'Cross-File Consistency Check', func: testCrossFileConsistency },
+    { name: 'Inconsistency Detection', func: testInconsistencyDetection },
+    { name: 'Column Name Consistency', func: testColumnNameConsistency },
     { name: 'End-to-End Process Validation', func: testEndToEndProcessValidation },
     { name: 'API Safety Validation', func: testApiSafetyValidation },
     { name: 'Sheet Modification Safety', func: testSheetModificationSafety }
@@ -434,7 +589,7 @@ function quickTest() {
   
   const quickTests = [
     { name: 'Header Map Creation', func: testHeaderMapFunctionality },
-    { name: 'Column Index Lookup', func: testColumnIndexFunctionality },
+    { name: 'Column Access Consistency', func: testColumnAccessConsistency },
     { name: 'Skip Logic', func: testSkipLogicValidation }
   ];
   

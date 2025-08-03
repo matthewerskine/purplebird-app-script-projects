@@ -1,7 +1,4 @@
 
-// Column constants for consistency
-const SHEET_COL_NAME = 'name';
-
 /**
  * REVERTED to original, stable version.
  * Helper function to create a simple map of header names to column indices.
@@ -55,7 +52,7 @@ function getArchivedCompanyNamesSet(archivedSheet) {
  */
 function getExistingCompanyNames(sheet, headerMap) {
   const nameSet = new Set();
-  const nameColIdx = headerMap[SHEET_COL_NAME]; // Now works correctly
+  const nameColIdx = headerMap['name']; // Use string directly
 
   if (nameColIdx === undefined || sheet.getLastRow() < 2) {
     return nameSet;
@@ -76,7 +73,7 @@ function getExistingCompanyNames(sheet, headerMap) {
  */
 function getPreviousRawNamesSet(sourceSheet, headerMap, startRow) {
   const nameSet = new Set();
-  const nameColIdx = headerMap[SHEET_COL_NAME]; // Now works correctly
+  const nameColIdx = headerMap['name']; // Use string directly
 
   if (nameColIdx === undefined || startRow <= 2) {
     return nameSet;

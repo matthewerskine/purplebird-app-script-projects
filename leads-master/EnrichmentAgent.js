@@ -70,6 +70,12 @@ function processPendingRowsBatch() {
     const statusColIdx = setup.outputIndices.status;
     const notesColIdx = setup.outputIndices.notes;
 
+    // Check if required columns exist
+    if (statusColIdx === undefined) {
+      Logger.log('❌ enrichmentMeta.status column not found. Enrichment cannot proceed.');
+      return;
+    }
+
     // --- BATCH LOGIC: Find all pending rows up to the max limit ---
     const rowsToProcess = [];
     const statusData = sheet.getRange(2, statusColIdx + 1, sheet.getLastRow() - 1, 1).getValues();
@@ -99,7 +105,7 @@ function processPendingRowsBatch() {
     // --- Process each row in the batch individually ---
     for (const rowNum of rowsToProcess) {
       const statusCell = sheet.getRange(rowNum, statusColIdx + 1);
-      const notesCell = sheet.getRange(rowNum, notesColIdx + 1);
+      const notesCell = notesColIdx !== undefined ? sheet.getRange(rowNum, notesColIdx + 1) : null;
 
       // CRITICAL: try...catch is INSIDE the loop for row-level error handling
       try {
@@ -113,14 +119,18 @@ function processPendingRowsBatch() {
         verifyAttribution_bg(sheet, singleRowRange);
 
         statusCell.setValue(STATUS_COMPLETE);
-        notesCell.setNote(`Successfully enriched on ${new Date().toLocaleString()}`);
+        if (notesCell) {
+          notesCell.setNote(`Successfully enriched on ${new Date().toLocaleString()}`);
+        }
         Logger.log(`Successfully processed row ${rowNum}.`);
 
       } catch (e) {
         const errorMessage = `Error processing row ${rowNum}: ${e.message} (Stack: ${e.stack})`;
         Logger.log(errorMessage);
         statusCell.setValue(STATUS_ERROR);
-        notesCell.setNote(errorMessage);
+        if (notesCell) {
+          notesCell.setNote(errorMessage);
+        }
         // The loop will continue to the next row
       }
     }
