@@ -1331,3 +1331,313 @@ function deleteBadRecordsTest() {
     }
   }
 }
+
+// ===================================================================================
+// AGENT SHEET FUNCTIONALITY
+// ===================================================================================
+
+/**
+ * Sends selected leads to a specified Google Sheet (agent sheet)
+ * Similar to sendSelectedLeadsToAirtable but for Google Sheets instead of Airtable
+ */
+function sendSelectedLeadsToAgentSheet() {
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  
+  // Ensure this function is run from the correct sheet
+  if (sheet.getName() !== SHEET_QUALIFY) {
+    ui.alert('Wrong Sheet', `This function should only be run from the "${SHEET_QUALIFY}" sheet.`, ui.ButtonSet.OK);
+    return;
+  }
+
+  const headerMap = getHeaderMap(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  const requiredSheetCols = [SHEET_COL_NAME, SHEET_COL_PROCESSED];
+
+  for (const col of requiredSheetCols) {
+    if (headerMap[col] === undefined) {
+      ui.alert('Missing Header Column', `A required column "${col}" was not found in Row 1 of your sheet.`, ui.ButtonSet.OK);
+      return;
+    }
+  }
+
+  const selection = sheet.getSelection();
+  let dataRange = selection.getActiveRange();
+  
+  if (!dataRange || dataRange.isBlank()) {
+    ui.alert('No Data Selected', 'Please select the data rows you want to send to the agent sheet.', ui.ButtonSet.OK);
+    return;
+  }
+
+  if (dataRange.getRow() === 1) {
+    if (dataRange.getNumRows() > 1) {
+      dataRange = dataRange.offset(1, 0, dataRange.getNumRows() - 1);
+    } else {
+       ui.alert('Header Row Selected', 'Please select data rows below Row 1.', ui.ButtonSet.OK);
+       return;
+    }
+  }
+  
+  // Get target sheet URL from user
+  const response = ui.prompt('Target Sheet', 'Please enter the Google Sheets URL for the agent sheet:', ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+  
+  const targetUrl = response.getResponseText().trim();
+  if (!targetUrl) {
+    ui.alert('No URL Provided', 'Please provide a valid Google Sheets URL.', ui.ButtonSet.OK);
+    return;
+  }
+  
+  // Process the data transfer
+  processDataRowsToAgentSheet(sheet, dataRange, headerMap, targetUrl);
+}
+
+/**
+ * Processes data rows and sends them to the agent sheet
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Source sheet
+ * @param {GoogleAppsScript.Spreadsheet.Range} dataRowsRange - Range of data rows
+ * @param {object} headerMap - Header mapping for source sheet
+ * @param {string} targetUrl - Target Google Sheets URL
+ */
+function processDataRowsToAgentSheet(sheet, dataRowsRange, headerMap, targetUrl) {
+  const ui = SpreadsheetApp.getUi();
+  const dataRowsToProcess = dataRowsRange.getValues();
+
+  // Validate and open target sheet
+  const targetResult = validateAndOpenTargetSheet(targetUrl);
+  if (targetResult.error) {
+    ui.alert('Error', targetResult.error, ui.ButtonSet.OK);
+    return;
+  }
+
+  const targetSheet = targetResult.sheet;
+  const sourceHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const targetHeaderMap = ensureHeadersExist(targetSheet, sourceHeaders);
+
+  let successCount = 0;
+  let failCount = 0;
+  let alreadyProcessedCount = 0;
+  let skippedByActionCount = 0;
+  const processedRows = [];
+  const airtableActionColIndex = findAirtableActionColumn(headerMap);
+
+  for (let i = 0; i < dataRowsToProcess.length; i++) {
+    const rowData = dataRowsToProcess[i];
+    const actualSheetRowIndex = dataRowsRange.getRow() + i;
+
+    // Check the airtableAction column first (same logic as Airtable function)
+    if (airtableActionColIndex !== undefined) {
+      const actionValue = String(rowData[airtableActionColIndex] || '').trim().toLowerCase();
+      if (actionValue === 'skip') {
+        skippedByActionCount++;
+        Logger.log(`Row ${actualSheetRowIndex}: Skipping due to 'skip' command in airtableAction column.`);
+        continue;
+      }
+    }
+
+    // Check if already processed
+    const processedStatusCell = rowData[headerMap[SHEET_COL_PROCESSED]];
+    if (processedStatusCell && (String(processedStatusCell).toLowerCase().includes('sent to agent sheet'))) {
+      alreadyProcessedCount++;
+      continue;
+    }
+
+    const companyName = rowData[headerMap[SHEET_COL_NAME]];
+    if (!companyName) {
+      Logger.log(`Sheet Row ${actualSheetRowIndex}: Skipping due to missing company name.`);
+      failCount++;
+      continue;
+    }
+
+    // Copy row to target sheet
+    Logger.log(`Processing row ${actualSheetRowIndex}: "${companyName}"`);
+    const success = copyRowToTargetSheet(rowData, headerMap, targetSheet, targetHeaderMap);
+    
+    if (success) {
+      successCount++;
+      processedRows.push(actualSheetRowIndex);
+      Logger.log(`✅ Row ${actualSheetRowIndex} copied successfully`);
+    } else {
+      failCount++;
+      Logger.log(`❌ Row ${actualSheetRowIndex} failed to copy`);
+    }
+  }
+
+  // Update processed status for successful transfers
+  if (processedRows.length > 0) {
+    updateProcessedStatusForAgentSheet(sheet, processedRows);
+  }
+
+  // Show results
+  let message = `Processing complete:\n` +
+                `Successfully sent: ${successCount}\n` +
+                (failCount > 0 ? `Failed: ${failCount}\n` : '') +
+                (alreadyProcessedCount > 0 ? `Skipped (already sent to agent sheet): ${alreadyProcessedCount}\n` : '') +
+                (skippedByActionCount > 0 ? `Skipped (marked as 'skip'): ${skippedByActionCount}\n` : '');
+  ui.alert('Processing Complete', message, ui.ButtonSet.OK);
+}
+
+/**
+ * Extracts spreadsheet ID from Google Sheets URL
+ * @param {string} url - Google Sheets URL
+ * @returns {string} Spreadsheet ID or null if invalid
+ */
+function parseGoogleSheetUrl(url) {
+  // Handle formats like:
+  // https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
+  // https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit#gid=0
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Validates URL and opens target spreadsheet
+ * @param {string} url - Google Sheets URL
+ * @returns {object} {sheet, error} - Target sheet or error
+ */
+function validateAndOpenTargetSheet(url) {
+  try {
+    const spreadsheetId = parseGoogleSheetUrl(url);
+    if (!spreadsheetId) {
+      return { error: 'Invalid Google Sheets URL format. Please use a URL like: https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit' };
+    }
+    
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = spreadsheet.getActiveSheet();
+    
+    return { sheet, error: null };
+  } catch (error) {
+    return { error: 'Cannot access target sheet. Please check the URL and ensure you have permission to access the sheet.' };
+  }
+}
+
+/**
+ * Ensures target sheet has required headers, creates them if missing
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} targetSheet - Target sheet
+ * @param {string[]} sourceHeaders - Headers from source sheet
+ * @returns {object} Header mapping for target sheet
+ */
+function ensureHeadersExist(targetSheet, sourceHeaders) {
+  // Handle completely empty sheets
+  if (targetSheet.getLastRow() === 0 || targetSheet.getLastColumn() === 0) {
+    // Create headers in target sheet
+    targetSheet.getRange(1, 1, 1, sourceHeaders.length).setValues([sourceHeaders]);
+    return getHeaderMap(sourceHeaders);
+  }
+  
+  const targetHeaders = targetSheet.getRange(1, 1, 1, targetSheet.getLastColumn()).getValues()[0];
+  const targetHeaderMap = getHeaderMap(targetHeaders);
+  
+  // Check if target sheet has no valid headers
+  if (targetHeaders.every(h => !h)) {
+    // Create headers in target sheet
+    targetSheet.getRange(1, 1, 1, sourceHeaders.length).setValues([sourceHeaders]);
+    return getHeaderMap(sourceHeaders);
+  }
+  
+  // Return existing header mapping
+  return targetHeaderMap;
+}
+
+/**
+ * Copies a single row from source to target sheet with column mapping
+ * @param {Array} sourceRow - Row data from source sheet
+ * @param {object} sourceHeaderMap - Header mapping for source sheet
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} targetSheet - Target sheet
+ * @param {object} targetHeaderMap - Header mapping for target sheet
+ * @returns {boolean} Success status
+ */
+function copyRowToTargetSheet(sourceRow, sourceHeaderMap, targetSheet, targetHeaderMap) {
+  try {
+    Logger.log(`Copying row with ${Object.keys(targetHeaderMap).length} target columns`);
+    
+    // Get the maximum column index needed for target sheet
+    const targetColumnValues = Object.values(targetHeaderMap);
+    const maxTargetColumn = targetColumnValues.length > 0 ? Math.max(...targetColumnValues) + 1 : 0;
+    
+    Logger.log(`Max target column: ${maxTargetColumn}`);
+    
+    if (maxTargetColumn <= 0) {
+      Logger.log('No valid target columns found - using source column count');
+      // Fallback: use source column count if no target mapping
+      const sourceColumnCount = sourceRow.length;
+      const targetRow = [...sourceRow]; // Copy all source data
+      
+      const nextRow = targetSheet.getLastRow() + 1;
+      targetSheet.getRange(nextRow, 1, 1, sourceColumnCount).setValues([targetRow]);
+      return true;
+    }
+    
+    // Create target row array with proper size
+    const targetRow = new Array(maxTargetColumn).fill('');
+    
+    // Map each column from source to target
+    for (const [sourceHeader, sourceIndex] of Object.entries(sourceHeaderMap)) {
+      const targetIndex = targetHeaderMap[sourceHeader];
+      if (targetIndex !== undefined && sourceRow[sourceIndex] !== undefined) {
+        targetRow[targetIndex] = sourceRow[sourceIndex];
+      }
+    }
+    
+    // Find next empty row in target sheet
+    const nextRow = targetSheet.getLastRow() + 1;
+    targetSheet.getRange(nextRow, 1, 1, maxTargetColumn).setValues([targetRow]);
+    
+    return true;
+  } catch (error) {
+    Logger.log(`Error copying row: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Updates the processed status for rows sent to agent sheet
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Source sheet
+ * @param {number[]} rowIndices - Row indices to update
+ */
+function updateProcessedStatusForAgentSheet(sheet, rowIndices) {
+  const headerMap = getHeaderMap(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  const processedColIndex = headerMap[SHEET_COL_PROCESSED];
+  
+  if (processedColIndex !== undefined) {
+    const today = new Date().toISOString().slice(0, 10);
+    const statusMessage = `Sent to agent sheet on ${today}`;
+    
+    rowIndices.forEach(rowIndex => {
+      sheet.getRange(rowIndex, processedColIndex + 1).setValue(statusMessage);
+    });
+  }
+}
+
+/**
+ * Debug function to test agent sheet functionality with specific rows
+ */
+function debugAgentSheetTransfer() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('GM - Qualify');
+  if (!sheet) {
+    console.log('❌ GM - Qualify sheet not found');
+    return;
+  }
+  
+  const headerMap = getHeaderMap(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  console.log('Header map:', headerMap);
+  
+  // Test with rows 4425-4428
+  const testRows = [4425, 4426, 4427, 4428];
+  
+  for (const rowNum of testRows) {
+    if (rowNum > sheet.getLastRow()) {
+      console.log(`Row ${rowNum}: Beyond sheet range`);
+      continue;
+    }
+    
+    const rowData = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getValues()[0];
+    console.log(`Row ${rowNum}:`, {
+      companyName: rowData[headerMap['name']],
+      processed: rowData[headerMap['processed']],
+      hasData: rowData.some(cell => cell !== null && cell !== ''),
+      dataLength: rowData.length
+    });
+  }
+}
