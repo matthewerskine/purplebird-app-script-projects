@@ -5,6 +5,7 @@ const COMPANIES_HOUSE_API_KEY =
   PropertiesService.getScriptProperties().getProperty(
     "COMPANIES_HOUSE_API_KEY"
   );
+const SLACK_WEBHOOK_URL = PropertiesService.getScriptProperties().getProperty("SLACK_WEBHOOK_URL");
 
 // -------- CONFIGURATION --------
 const OPENROUTER_MODEL_RESEARCH_ONLINE =
@@ -16,6 +17,23 @@ const OPENROUTER_REFERER = "https://script.google.com";
 const OPENROUTER_PROJECT_TITLE = "AppsScript Enrichment Agent";
 const WEBSITE_CONTENT_MAX_CHARS = 20000;
 const OUTDATED_THRESHOLD_YEAR = new Date().getFullYear() - 4;
+
+/**
+ * Sends a notification message to a pre-configured Slack channel.
+ */
+function sendSlackNotification(message) {
+  if (!SLACK_WEBHOOK_URL) {
+    Logger.log('Slack Webhook URL not configured. Skipping notification.');
+    return;
+  }
+  const payload = { 'text': `[Enrichment Agent] ${message}` };
+  const options = { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload) };
+  try { 
+    UrlFetchApp.fetch(SLACK_WEBHOOK_URL, options); 
+  } catch (e) { 
+    Logger.log(`Could not send Slack notification. Error: ${e.message}`); 
+  }
+}
 
 // --- Field & Column Mappings ---
 const FIELD_KEYS_COMPANY_STATUS = {
@@ -129,6 +147,9 @@ function processPendingRowsBatch() {
         rowsToProcess.length
       } rows: [${rowsToProcess.join(", ")}]`
     );
+    
+    // Send Slack notification for batch start
+    sendSlackNotification(`🔄 Starting enrichment batch: ${rowsToProcess.length} rows`);
     for (const rowNum of rowsToProcess) {
       sheet.getRange(rowNum, statusColIdx + 1).setValue(STATUS_IN_PROGRESS);
     }
@@ -172,6 +193,7 @@ function processPendingRowsBatch() {
       }
     }
     Logger.log("Batch processing complete.");
+    sendSlackNotification(`✅ Enrichment batch completed successfully`);
   } finally {
     lock.releaseLock();
     Logger.log("Lock released, batch processing finished.");
@@ -248,8 +270,12 @@ function resetEnrichmentStatus() {
  * @returns {object} A summary object { processed: number, errors: number }.
  */
 function verifyCompanyStatusFree_bg(sheet, selection) {
-  if (!COMPANIES_HOUSE_API_KEY || !OPENROUTER_API_KEY)
+  if (!COMPANIES_HOUSE_API_KEY || !OPENROUTER_API_KEY) {
+    const errorMsg = "Missing API keys for company verification. COMPANIES_HOUSE_API_KEY or OPENROUTER_API_KEY not configured.";
+    Logger.log(errorMsg);
+    sendSlackNotification(`🚨 ${errorMsg}`);
     return { processed: 0, errors: selection.getNumRows() };
+  }
 
   const allSheetData = sheet.getDataRange().getValues();
   const setup = setupSheetProcessing(
@@ -292,12 +318,21 @@ function verifyCompanyStatusFree_bg(sheet, selection) {
           chResult.companyData
         )}. Instructions: Extract 'company_number', 'company_name', and 'company_status'. Set 'confidence' to "High". For 'reasoning', state the match was via "${
           chResult.matchMethod
-        }". For 'trading_status', use 'company_status'. Return strictly valid JSON: { "company_number": "string", "trading_status": "string", "confidence": "High", "reasoning": "string" }`;
+        }". For 'trading_status', use 'company_status'. IMPORTANT: Only extract the actual company_number from the JSON data. If no company_number is present in the data, return null or empty string. DO NOT generate fake or placeholder numbers like 12345678. Return strictly valid JSON: { "company_number": "string_or_null", "trading_status": "string", "confidence": "High", "reasoning": "string" }`;
         const resultString = callOpenRouter(
           formatPrompt,
           OPENROUTER_MODEL_ANALYSIS
         );
         const parsed = JSON.parse(resultString);
+        
+        // Validate company number for suspicious values
+        if (parsed.company_number && /^12345678$|^00000000$|^99999999$/.test(parsed.company_number)) {
+          const warningMsg = `Suspicious company number detected: ${parsed.company_number} for company "${inputFields.title}" (Row ${rowNumForLogging}). Setting to null.`;
+          Logger.log(`BG-Warn (Row ${rowNumForLogging}): ${warningMsg}`);
+          sendSlackNotification(`⚠️ ${warningMsg}`);
+          parsed.company_number = null;
+        }
+        
         for (const [key, colIdx] of Object.entries(outputIndices)) {
           sheet
             .getRange(rowNumForLogging, colIdx + 1)
@@ -383,12 +418,21 @@ function verifyCompanyStatusFree_bg(sheet, selection) {
           chCandidates
             ? JSON.stringify(chCandidates, null, 2)
             : "Could not fetch."
-        }. Mission: Analyze website text for the true registered name. Compare with candidates. Decide the single best match. Output: If a strong match is found, extract its 'company_number' and 'company_status' (use for 'trading_status'). Your 'confidence' must be High (explicit match), Medium (inferred), or Low (no link). Provide brief 'reasoning'. Return strictly valid JSON: { "company_number": "string_or_null", "trading_status": "string", "confidence": "High|Medium|Low", "reasoning": "string" }`;
+        }. Mission: Analyze website text for the true registered name. Compare with candidates. Decide the single best match. Output: If a strong match is found, extract its 'company_number' and 'company_status' (use for 'trading_status'). Your 'confidence' must be High (explicit match), Medium (inferred), or Low (no link). Provide brief 'reasoning'. IMPORTANT: Only extract actual company numbers from the provided data. If no company number is found in the candidates or website text, return null or empty string for company_number. DO NOT generate fake or placeholder numbers like 12345678. Return strictly valid JSON: { "company_number": "string_or_null", "trading_status": "string", "confidence": "High|Medium|Low", "reasoning": "string" }`;
         const resultString = callOpenRouter(
           detectivePrompt,
           OPENROUTER_MODEL_ANALYSIS
         );
         const parsed = JSON.parse(resultString);
+        
+        // Validate company number for suspicious values
+        if (parsed.company_number && /^12345678$|^00000000$|^99999999$/.test(parsed.company_number)) {
+          const warningMsg = `Suspicious company number detected: ${parsed.company_number} for company "${inputFields.title}" (Row ${rowNumForLogging}). Setting to null.`;
+          Logger.log(`BG-Warn (Row ${rowNumForLogging}): ${warningMsg}`);
+          sendSlackNotification(`⚠️ ${warningMsg}`);
+          parsed.company_number = null;
+        }
+        
         for (const [key, colIdx] of Object.entries(outputIndices)) {
           sheet
             .getRange(rowNumForLogging, colIdx + 1)
@@ -405,6 +449,12 @@ function verifyCompanyStatusFree_bg(sheet, selection) {
       errorCount++;
       const errorMessage = `BG-Error (Row ${rowNumForLogging}): ${err.message}`;
       Logger.log(errorMessage + (err.stack ? `\nStack: ${err.stack}` : ""));
+      
+      // Send critical errors to Slack
+      if (err.message.includes('API') || err.message.includes('rate limit') || err.message.includes('quota')) {
+        sendSlackNotification(`🚨 Critical Error (Row ${rowNumForLogging}): ${err.message}`);
+      }
+      
       const firstColIdx = outputIndices[Object.keys(outputIndices)[0]];
       if (firstColIdx !== undefined)
         sheet
@@ -420,8 +470,12 @@ function verifyCompanyStatusFree_bg(sheet, selection) {
  * BG-safe: Scans websites for attribution details.
  */
 function verifyAttribution_bg(sheet, selection) {
-  if (!OPENROUTER_API_KEY)
+  if (!OPENROUTER_API_KEY) {
+    const errorMsg = "Missing OPENROUTER_API_KEY for attribution verification.";
+    Logger.log(errorMsg);
+    sendSlackNotification(`🚨 ${errorMsg}`);
     return { processed: 0, errors: selection.getNumRows() };
+  }
   const allSheetData = sheet.getDataRange().getValues();
   const setup = setupSheetProcessing(
     sheet,
@@ -720,6 +774,12 @@ function extractAdPresence_bg(sheet, selection) {
       Logger.log(
         `BG-Error (Row ${rowNumForLogging}): Script error during ad scan: ${err.message}`
       );
+      
+      // Send critical errors to Slack
+      if (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('timeout')) {
+        sendSlackNotification(`🚨 Ad Scan Error (Row ${rowNumForLogging}): ${err.message}`);
+      }
+      
       sheet
         .getRange(rowNumForLogging, outputIndices.isRunningAds + 1)
         .setValue("")

@@ -2,7 +2,7 @@
 const scriptProperties = PropertiesService.getScriptProperties();
 const AIRTABLE_API_KEY = scriptProperties.getProperty('AIRTABLE_API_KEY');
 const AIRTABLE_BASE_ID = scriptProperties.getProperty('AIRTABLE_BASE_ID');
-const AIRTABLE_TABLE_NAME = 'Leads';
+const AIRTABLE_TABLE_NAME = scriptProperties.getProperty('AIRTABLE_TABLE_NAME');
 
 // --- SHEET NAMES (Centralized for easy updating) ---
 const SHEET_RAW = 'GM - RAW';
@@ -67,6 +67,23 @@ const AIRTABLE_FIELD_STRATEGY = 'Strategy';
 const AIRTABLE_FIELD_SOURCE = 'Source';
 const AIRTABLE_FIELD_STAGE = 'Stage';
 const AIRTABLE_FIELD_ADS_RUNNING = 'Is Running Ads';
+
+/**
+ * Sends a notification message to a pre-configured Slack channel.
+ */
+function sendSlackNotification(message) {
+  if (!SLACK_WEBHOOK_URL) {
+    Logger.log('Slack Webhook URL not configured. Skipping notification.');
+    return;
+  }
+  const payload = { 'text': `[Leads Manager] ${message}` };
+  const options = { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload) };
+  try { 
+    UrlFetchApp.fetch(SLACK_WEBHOOK_URL, options); 
+  } catch (e) { 
+    Logger.log(`Could not send Slack notification. Error: ${e.message}`); 
+  }
+}
 
 function sendSelectedLeadsToAirtable() {
   // Check for API Keys first
@@ -1407,7 +1424,9 @@ function processDataRowsToAgentSheet(sheet, dataRowsRange, headerMap, targetUrl)
   // Validate and open target sheet
   const targetResult = validateAndOpenTargetSheet(targetUrl);
   if (targetResult.error) {
+    const errorMsg = `Agent sheet transfer failed: ${targetResult.error}`;
     ui.alert('Error', targetResult.error, ui.ButtonSet.OK);
+    sendSlackNotification(`🚨 ${errorMsg}`);
     return;
   }
 
@@ -1452,7 +1471,7 @@ function processDataRowsToAgentSheet(sheet, dataRowsRange, headerMap, targetUrl)
 
     // Copy row to target sheet
     Logger.log(`Processing row ${actualSheetRowIndex}: "${companyName}"`);
-    const success = copyRowToTargetSheet(rowData, headerMap, targetSheet, targetHeaderMap);
+    const success = copyRowToTargetSheet(rowData, headerMap, targetSheet, targetHeaderMap, sheet, actualSheetRowIndex);
     
     if (success) {
       successCount++;
@@ -1476,6 +1495,14 @@ function processDataRowsToAgentSheet(sheet, dataRowsRange, headerMap, targetUrl)
                 (alreadyProcessedCount > 0 ? `Skipped (already sent to agent sheet): ${alreadyProcessedCount}\n` : '') +
                 (skippedByActionCount > 0 ? `Skipped (marked as 'skip'): ${skippedByActionCount}\n` : '');
   ui.alert('Processing Complete', message, ui.ButtonSet.OK);
+  
+  // Send Slack notification for transfer results
+  if (successCount > 0) {
+    sendSlackNotification(`✅ Agent sheet transfer completed: ${successCount} records transferred successfully`);
+  }
+  if (failCount > 0) {
+    sendSlackNotification(`⚠️ Agent sheet transfer had ${failCount} failures`);
+  }
 }
 
 /**
@@ -1548,7 +1575,7 @@ function ensureHeadersExist(targetSheet, sourceHeaders) {
  * @param {object} targetHeaderMap - Header mapping for target sheet
  * @returns {boolean} Success status
  */
-function copyRowToTargetSheet(sourceRow, sourceHeaderMap, targetSheet, targetHeaderMap) {
+function copyRowToTargetSheet(sourceRow, sourceHeaderMap, targetSheet, targetHeaderMap, sourceSheet, sourceRowIndex) {
   try {
     Logger.log(`Copying row with ${Object.keys(targetHeaderMap).length} target columns`);
     
@@ -1565,7 +1592,11 @@ function copyRowToTargetSheet(sourceRow, sourceHeaderMap, targetSheet, targetHea
       const targetRow = [...sourceRow]; // Copy all source data
       
       const nextRow = targetSheet.getLastRow() + 1;
-      targetSheet.getRange(nextRow, 1, 1, sourceColumnCount).setValues([targetRow]);
+      const targetRange = targetSheet.getRange(nextRow, 1, 1, sourceColumnCount);
+      targetRange.setValues([targetRow]);
+      
+      // Copy cell notes for fallback case
+      copyCellNotesToTarget(sourceSheet, sourceRowIndex, targetSheet, nextRow, sourceColumnCount);
       return true;
     }
     
@@ -1582,12 +1613,61 @@ function copyRowToTargetSheet(sourceRow, sourceHeaderMap, targetSheet, targetHea
     
     // Find next empty row in target sheet
     const nextRow = targetSheet.getLastRow() + 1;
-    targetSheet.getRange(nextRow, 1, 1, maxTargetColumn).setValues([targetRow]);
+    const targetRange = targetSheet.getRange(nextRow, 1, 1, maxTargetColumn);
+    targetRange.setValues([targetRow]);
+    
+    // Copy cell notes for mapped columns
+    copyCellNotesToTarget(sourceSheet, sourceRowIndex, targetSheet, nextRow, sourceHeaderMap, targetHeaderMap);
     
     return true;
   } catch (error) {
     Logger.log(`Error copying row: ${error.message}`);
     return false;
+  }
+}
+
+/**
+ * Copies cell notes from source to target sheet
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sourceSheet - Source sheet
+ * @param {number} sourceRowIndex - Source row index (1-based)
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} targetSheet - Target sheet
+ * @param {number} targetRowIndex - Target row index (1-based)
+ * @param {object} sourceHeaderMap - Source header mapping (or column count for fallback)
+ * @param {object} targetHeaderMap - Target header mapping (optional for fallback)
+ */
+function copyCellNotesToTarget(sourceSheet, sourceRowIndex, targetSheet, targetRowIndex, sourceHeaderMap, targetHeaderMap) {
+  try {
+    // Get all notes from source row
+    const sourceRange = sourceSheet.getRange(sourceRowIndex, 1, 1, sourceSheet.getLastColumn());
+    const sourceNotes = sourceRange.getNotes()[0];
+    
+    if (!sourceNotes || sourceNotes.every(note => !note)) {
+      return; // No notes to copy
+    }
+    
+    // Check if this is fallback mode (sourceHeaderMap is a number)
+    if (typeof sourceHeaderMap === 'number') {
+      // Fallback mode: copy all notes in order
+      const columnCount = sourceHeaderMap;
+      for (let i = 0; i < columnCount && i < sourceNotes.length; i++) {
+        if (sourceNotes[i]) {
+          const targetCell = targetSheet.getRange(targetRowIndex, i + 1);
+          targetCell.setNote(sourceNotes[i]);
+        }
+      }
+    } else {
+      // Normal mode: copy notes for mapped columns
+      for (const [sourceHeader, sourceIndex] of Object.entries(sourceHeaderMap)) {
+        const targetIndex = targetHeaderMap[sourceHeader];
+        if (targetIndex !== undefined && sourceNotes[sourceIndex]) {
+          const targetCell = targetSheet.getRange(targetRowIndex, targetIndex + 1);
+          targetCell.setNote(sourceNotes[sourceIndex]);
+        }
+      }
+    }
+  } catch (error) {
+    Logger.log(`Error copying cell notes: ${error.message}`);
+    sendSlackNotification(`⚠️ Cell notes transfer error: ${error.message}`);
   }
 }
 
